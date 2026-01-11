@@ -39,18 +39,17 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
 import org.cloudburstmc.protocol.bedrock.packet.MobArmorEquipmentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MobEquipmentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MoveEntityDeltaPacket;
-import org.cloudburstmc.protocol.bedrock.packet.SetEntityDataPacket;
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAttributesPacket;
 import org.geysermc.geyser.GeyserImpl;
-import org.geysermc.geyser.entity.EntityDefinition;
 import org.geysermc.geyser.entity.attribute.GeyserAttributeType;
-import org.geysermc.geyser.level.EffectType;
+import org.geysermc.geyser.entity.spawn.EntitySpawnContext;
 import org.geysermc.geyser.entity.type.living.animal.HappyGhastEntity;
 import org.geysermc.geyser.entity.vehicle.ClientVehicle;
 import org.geysermc.geyser.entity.vehicle.HappyGhastVehicleComponent;
 import org.geysermc.geyser.inventory.GeyserItemStack;
 import org.geysermc.geyser.item.Items;
 import org.geysermc.geyser.item.type.Item;
+import org.geysermc.geyser.level.EffectType;
 import org.geysermc.geyser.scoreboard.Team;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.cache.tags.ItemTag;
@@ -79,7 +78,6 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -113,9 +111,9 @@ public class LivingEntity extends Entity implements Tickable {
     private int lerpSteps;
     protected boolean dirtyYaw, dirtyHeadYaw, dirtyPitch;
 
-    public LivingEntity(GeyserSession session, int entityId, long geyserId, UUID uuid, EntityDefinition<?> definition, Vector3f position, Vector3f motion, float yaw, float pitch, float headYaw) {
-        super(session, entityId, geyserId, uuid, definition, position, motion, yaw, pitch, headYaw);
-        this.lerpPosition = position;
+    public LivingEntity(EntitySpawnContext context) {
+        super(context);
+        this.lerpPosition = position();
     }
 
     public GeyserItemStack getItemInSlot(EquipmentSlot slot) {
@@ -392,9 +390,9 @@ public class LivingEntity extends Entity implements Tickable {
     }
 
     @Override
-    public void setPosition(Vector3f position) {
+    public void position(Vector3f position) {
+        super.position(position);
         this.lerpPosition = position;
-        super.setPosition(position);
     }
 
     @Override
@@ -406,7 +404,7 @@ public class LivingEntity extends Entity implements Tickable {
             clientVehicle.getVehicleComponent().moveRelative(relX, relY, relZ);
         }
 
-        if (shouldLerp() && (relX != 0 || relY != 0 || relZ != 0) && position.distanceSquared(session.getPlayerEntity().position()) < 4096) {
+        if (shouldLerp() && (relX != 0 || relY != 0 || relZ != 0) && position().distanceSquared(session.getPlayerEntity().position()) < 4096) {
             this.dirtyPitch = pitch != this.pitch;
             this.dirtyYaw = yaw != this.yaw;
             this.dirtyHeadYaw = headYaw != this.headYaw;
@@ -423,20 +421,20 @@ public class LivingEntity extends Entity implements Tickable {
     }
 
     @Override
-    public void moveAbsolute(Vector3f position, float yaw, float pitch, float headYaw, boolean isOnGround, boolean teleported) {
+    public void moveAbsolute(Vector3f javaPosition, float yaw, float pitch, float headYaw, boolean isOnGround, boolean teleported) {
         setYaw(yaw);
         setPitch(pitch);
         setHeadYaw(headYaw);
 
-        this.lerpPosition = position;
+        this.lerpPosition = javaPosition;
 
         // It's vanilla behaviour to lerp if the position is within 64 blocks, however we also check if the position is close enough to the player
         // position to see if it can actually affect anything to save network.
-        if (shouldLerp() && position.distanceSquared(this.position) < 4096 && position.distanceSquared(session.getPlayerEntity().position()) < 4096) {
+        if (shouldLerp() && javaPosition.distanceSquared(position()) < 4096 && javaPosition.distanceSquared(session.getPlayerEntity().position()) < 4096) {
             this.dirtyPitch = this.dirtyYaw = this.dirtyHeadYaw = true;
             this.lerpSteps = 3;
         } else {
-            super.moveAbsolute(position, yaw, pitch, headYaw, isOnGround, teleported);
+            super.moveAbsolute(javaPosition, yaw, pitch, headYaw, isOnGround, teleported);
         }
     }
 
@@ -448,28 +446,21 @@ public class LivingEntity extends Entity implements Tickable {
     public void tick() {
         if (this.lerpSteps > 0) {
             float time = 1.0f / this.lerpSteps;
-            float lerpXTotal = GenericMath.lerp(this.position.getX(), this.lerpPosition.getX(), time);
-            float lerpYTotal = GenericMath.lerp(this.position.getY(), this.lerpPosition.getY(), time);
-            float lerpZTotal = GenericMath.lerp(this.position.getZ(), this.lerpPosition.getZ(), time);
+            float lerpXTotal = GenericMath.lerp(this.position().getX(), this.lerpPosition.getX(), time);
+            float lerpYTotal = GenericMath.lerp(this.position().getY(), this.lerpPosition.getY(), time);
+            float lerpZTotal = GenericMath.lerp(this.position().getZ(), this.lerpPosition.getZ(), time);
 
             MoveEntityDeltaPacket moveEntityPacket = new MoveEntityDeltaPacket();
-            moveEntityPacket.setRuntimeEntityId(geyserId);
-            moveEntityPacket.setX(lerpXTotal);
-            moveEntityPacket.setY(lerpYTotal);
-            moveEntityPacket.setZ(lerpZTotal);
-            moveEntityPacket.setYaw(this.yaw);
-            moveEntityPacket.setPitch(this.pitch);
-            moveEntityPacket.setHeadYaw(this.headYaw);
             if (onGround) {
                 moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.ON_GROUND);
             }
-            if (lerpXTotal != this.position.getX()) {
+            if (lerpXTotal != this.position().getX()) {
                 moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.HAS_X);
             }
-            if (lerpYTotal != this.position.getY()) {
+            if (lerpYTotal != this.position().getY()) {
                 moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.HAS_Y);
             }
-            if (lerpZTotal != this.position.getZ()) {
+            if (lerpZTotal != this.position().getZ()) {
                 moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.HAS_Z);
             }
             if (this.dirtyYaw) {
@@ -482,13 +473,20 @@ public class LivingEntity extends Entity implements Tickable {
                 moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.HAS_PITCH);
             }
             moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.TELEPORTING);
+            position(Vector3f.from(lerpXTotal, lerpYTotal, lerpZTotal));
+            moveEntityPacket.setRuntimeEntityId(geyserId);
+            moveEntityPacket.setX(bedrockPosition().getX());
+            moveEntityPacket.setY(bedrockPosition().getY());
+            moveEntityPacket.setZ(bedrockPosition().getZ());
+            moveEntityPacket.setYaw(this.yaw);
+            moveEntityPacket.setPitch(this.pitch);
+            moveEntityPacket.setHeadYaw(this.headYaw);
 
             this.dirtyPitch = this.dirtyYaw = this.dirtyHeadYaw = false;
 
             // Queue this and send it immediately later with the rest.
             session.getQueuedImmediatelyPackets().add(moveEntityPacket);
 
-            this.position = Vector3f.from(lerpXTotal, lerpYTotal, lerpZTotal);
             this.lerpSteps--;
         }
     }
@@ -683,7 +681,7 @@ public class LivingEntity extends Entity implements Tickable {
             if (equippable != null) {
                 return slot == equippable.slot() &&
                     canUseSlot(slot) &&
-                    EntityUtils.equipmentUsableByEntity(session, equippable, this.definition.entityType());
+                    EntityUtils.equipmentUsableByEntity(session, equippable, javaTypeDefinition.type());
             } else {
                 return slot == EquipmentSlot.MAIN_HAND && canUseSlot(EquipmentSlot.MAIN_HAND);
             }
@@ -692,12 +690,12 @@ public class LivingEntity extends Entity implements Tickable {
         return false;
     }
 
-    public final boolean isEquippableInSlot(GeyserItemStack item, EquipmentSlot var2) {
+    public final boolean isEquippableInSlot(GeyserItemStack item, EquipmentSlot slot) {
         Equippable equippable = item.getComponent(DataComponentTypes.EQUIPPABLE);
         if (equippable == null) {
-            return var2 == EquipmentSlot.MAIN_HAND && this.canUseSlot(EquipmentSlot.MAIN_HAND);
+            return slot == EquipmentSlot.MAIN_HAND && this.canUseSlot(EquipmentSlot.MAIN_HAND);
         } else {
-            return var2 == equippable.slot() && this.canUseSlot(equippable.slot()) && EntityUtils.equipmentUsableByEntity(session, equippable, this.definition.entityType());
+            return slot == equippable.slot() && this.canUseSlot(equippable.slot()) && EntityUtils.equipmentUsableByEntity(session, equippable, javaTypeDefinition.type());
         }
     }
 
