@@ -2366,11 +2366,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     }
 
     @Override
-    public @NonNull CompletableFuture<@Nullable GeyserEntity> entityByJavaId(@NonNegative int javaId) {
-        return entities().entityByJavaId(javaId);
-    }
-
-    @Override
     public void showEmote(@NonNull GeyserPlayerEntity emoter, @NonNull String emoteId) {
         entities().showEmote(emoter, emoteId);
     }

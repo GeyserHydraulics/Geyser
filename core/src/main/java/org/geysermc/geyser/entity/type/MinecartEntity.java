@@ -133,7 +133,6 @@ public class MinecartEntity extends Entity implements Tickable {
                 return;
             }
 
-            // TODO testme
             float time = 1.0f / this.steps;
             float lerpXTotal = GenericMath.lerp(position().getX(), this.lerpPosition.getX(), time);
             float lerpYTotal = GenericMath.lerp(position().getY(), this.lerpPosition.getY(), time);
@@ -162,7 +161,7 @@ public class MinecartEntity extends Entity implements Tickable {
                 moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.HAS_PITCH);
             }
             moveEntityPacket.getFlags().add(MoveEntityDeltaPacket.Flag.TELEPORTING);
-            position(Vector3f.from(lerpXTotal, lerpYTotal, lerpZTotal));
+            super.position(Vector3f.from(lerpXTotal, lerpYTotal, lerpZTotal));
             moveEntityPacket.setRuntimeEntityId(geyserId);
             moveEntityPacket.setX(bedrockPosition().getX());
             moveEntityPacket.setY(bedrockPosition().getY());
